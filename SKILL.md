@@ -11,11 +11,14 @@ PNG still of the stage. The user watches and tells you what to change.
 
 ## Setup
 
-1. The user opens the site (`<SITE_URL>`: the address the site owner gave you) → **Start** → **G** → pastes the token
-   into **Remote AI** → **Connect** (the dot turns green). That tab stays in view. One editor at a time: a newer tab
-   takes over.
-2. The shell needs `VJW_AI_TOKEN` (the site owner's token) and, for another site, `VJW_URL`. If one is missing, ask
-   the user to set it (this skill's README.md). Never write the token into a file, a shader or a reply.
+1. The user opens the site (its address is `VJW_URL`) → **Start** → **G** → pastes the token
+   into **Remote AI** → **Connect** (the dot turns green). That tab stays in view.
+2. **Rooms:** each browser gets its own room on its first Connect and keeps it; the user only reads the code off the
+   G row (beside Connect) and gives it to you. The room routes your calls to that user's editor, so several people
+   live-code at once with one token. One editor a room: a newer tab in the same room takes over.
+3. The shell needs `VJW_URL` (the site address, such as `https://<host>/vjw001`) and `VJW_AI_TOKEN` (the token), both
+   from the site owner. If one is missing, ask the user to set it (this skill's README.md). Never write the token into a
+   file, a shader or a reply.
 
 ## Commands
 
@@ -26,16 +29,21 @@ The script is `scripts/vjw.mjs` in this skill's base directory (usually `~/.clau
 | `node ~/.claude/skills/vjw-shader/scripts/vjw.mjs state` | JSON: the code in the editor, its errors, `author` (AI or user) |
 | `node ~/.claude/skills/vjw-shader/scripts/vjw.mjs push my.glsl [name]` | `Playing` + `still: my.png` (open it), or `line N: msg` lines and exit 1. `name` titles an unsaved draft; `--no-still` skips the PNG |
 | `node ~/.claude/skills/vjw-shader/scripts/vjw.mjs export "Neon tunnel"` | `Neon tunnel.glsl` downloads in the user's browser |
-| `node ~/.claude/skills/vjw-shader/scripts/vjw.mjs guide` | the full guide (also `<SITE_URL>/ai/shader-guide.md`) |
+| `node ~/.claude/skills/vjw-shader/scripts/vjw.mjs guide` | the full guide (also the page `$VJW_URL/ai/shader-guide.md`) |
+
+Every command but `guide` takes `--room <code>`: the user's room code (else `VJW_ROOM`, else the room `main`).
 
 ## Work loop
 
-1. Run `state` first. Keep the user's edits unless they ask otherwise.
-2. Write the whole shader to a `.glsl` file and `push` it.
-3. Errors: fix them by line (the lines of your file) and push again. The last good shader keeps playing.
-4. `Playing`: open the still. Check that it is not black, not flat white, not one colour. Tell the user in one or two
+1. **The room first.** If `VJW_ROOM` is not set (`printenv VJW_ROOM` prints nothing) and the user has not given you a
+   room code yet, ask them, in one line: «Открой сайт → Start → G → Remote AI: какой там код комнаты (рядом с
+   Connect)?». Then pass that code in every call: `--room <code>` (or `export VJW_ROOM=<code>` in your shell).
+2. Run `state`. Keep the user's edits unless they ask otherwise.
+3. Write the whole shader to a `.glsl` file and `push` it.
+4. Errors: fix them by line (the lines of your file) and push again. The last good shader keeps playing.
+5. `Playing`: open the still. Check that it is not black, not flat white, not one colour. Tell the user in one or two
    lines what you made or changed.
-5. Iterate on the user's words. When they like it, `export "<Name>"` and tell them: "It is in your downloads; press
+6. Iterate on the user's words. When they like it, `export "<Name>"` and tell them: "It is in your downloads; press
    **Save as…** in the editor to keep it as a scene."
 
 ## The contract
@@ -94,8 +102,10 @@ licence of what you adapted).
 
 | Message | Do |
 |---|---|
+| `set VJW_URL` | ask the user to set the site address from the site owner (README.md), then run the command again |
 | `set VJW_AI_TOKEN` | ask the user to set the token (README.md), then run the command again |
 | `the server refused the token (401)` | the token is wrong: ask the user for the right one |
-| `no G editor open` | ask the user: site → Start → G → Remote AI → Connect |
+| `no G editor open in room …` | a wrong room code, or G is closed: ask the user for the code beside Connect (site → Start → G → Remote AI → Connect), then run again with `--room <code>` |
+| `a bad room code` | a room code is 1 to 16 letters a–z or digits: ask the user for the code beside Connect |
 | `did not answer in 20 s` | the editor's tab is hidden or asleep: ask the user to bring it into view |
 | `cannot reach …`, `not the relay` | `VJW_URL` is wrong or the site is down: ask the user |

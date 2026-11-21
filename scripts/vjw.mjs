@@ -5,21 +5,29 @@
 //   node vjw.mjs state                                  the editor's code, its last errors, who wrote it last (JSON)
 //   node vjw.mjs export <name>                          the editor's shader as <name>.glsl, downloaded in the user's browser
 //   node vjw.mjs guide                                  the full guide (markdown; no token needed)
-// env VJW_URL: the site address from the site owner (required), VJW_AI_TOKEN: the token from the site owner.
+//   … --room <code>                                     any command: the user's room code (beside Connect in G), over VJW_ROOM
+// env VJW_URL: the site address (https://<host>/<path>) and VJW_AI_TOKEN: the token, both from the site owner and both
+// required; VJW_ROOM: the room code beside Connect in the user's G editor (default main: the relay's room before rooms).
 // Exit 0: ok, 1: refused (GLSL errors, no editor, a wrong token, no network), 2: usage or set-up.
 import { realpathSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
-export const USAGE = 'usage: node vjw.mjs push <file.glsl> [name] [--no-still] | state | export <name> | guide'
+export const USAGE = 'usage: node vjw.mjs push <file.glsl> [name] [--no-still] | state | export <name> | guide, each with [--room <code>]'
 const PNG = 'data:image/png;base64,'
 
 /** One run: `args` without node and the script; resolves to the exit code. `env`, `fetch` and `log` are the tests' seams. */
 export async function main(args, { env = process.env, fetch = globalThis.fetch, log = console.log } = {}) {
+  const at = args.indexOf('--room') // --room <code>, anywhere in the line
   const still = !args.includes('--no-still')
-  const [cmd, arg, name] = args.filter((a) => a !== '--no-still')
-  if (!(cmd === 'state' || cmd === 'guide' || ((cmd === 'push' || cmd === 'export') && arg))) {
+  const [cmd, arg, name] = args.filter((a, i) => a !== '--no-still' && (at < 0 || (i !== at && i !== at + 1)))
+  if ((at >= 0 && !args[at + 1]) || !(cmd === 'state' || cmd === 'guide' || ((cmd === 'push' || cmd === 'export') && arg))) {
     log(USAGE)
+    return 2
+  }
+  const base = env.VJW_URL?.trim().replace(/\/+$/, '')
+  if (!base) {
+    log('error: set VJW_URL to the site address from the site owner (export VJW_URL=https://<host>/<path>)')
     return 2
   }
   const token = env.VJW_AI_TOKEN?.trim()
@@ -27,17 +35,13 @@ export async function main(args, { env = process.env, fetch = globalThis.fetch, 
     log('error: set VJW_AI_TOKEN to the token from the site owner (export VJW_AI_TOKEN=<token>)')
     return 2
   }
-  if (!env.VJW_URL?.trim()) {
-    log('error: set VJW_URL to the site address from the site owner (export VJW_URL=https://<host>/<path>)')
-    return 2
-  }
-  const base = env.VJW_URL.trim().replace(/\/+$/, '')
+  const room = (at < 0 ? env.VJW_ROOM : args[at + 1])?.trim() || 'main' // the relay routes each call to that room's editor
   /** One call to the relay: its JSON answer (the guide: `{ ok, text }`), or why none came. */
   const call = async (path, body) => {
     const url = `${base}/__ai/${path}`
     let r
     try {
-      const headers = { ...(token && { authorization: `Bearer ${token}` }), ...(body && { 'content-type': 'application/json' }) }
+      const headers = { ...(token && { authorization: `Bearer ${token}`, 'x-vjw-room': room }), ...(body && { 'content-type': 'application/json' }) }
       r = await fetch(url, { headers, ...(body && { method: 'POST', body: JSON.stringify(body) }) })
     } catch (e) {
       return { ok: false, error: `cannot reach ${url} (${e.cause?.code ?? e.cause?.message ?? e.message}): check VJW_URL` }
@@ -82,6 +86,7 @@ export async function main(args, { env = process.env, fetch = globalThis.fetch, 
     if (r.ok !== false) log(JSON.stringify(r, null, 2))
   }
   if (r.error) log(`error: ${r.error}`)
+  if (r.error?.startsWith('no G editor open in room ')) log('hint: ask the user for the room code beside Connect (site → Start → G → Remote AI), then run again with --room <code>')
   return r.ok === false ? 1 : 0
 }
 
